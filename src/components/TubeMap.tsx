@@ -1,250 +1,34 @@
-import React, { useMemo, useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import useSWR from 'swr';
 import { Train, ZoomIn, ZoomOut, Maximize } from 'lucide-react';
 import { fetchTrainPositions } from '../lib/api';
-import { Station, VehiclePosition, TrainPosition } from '../types/tfl';
+import { TrainPosition } from '../types/tfl';
+import TrainBlock from './TrainBlock';
+import useTrainPositions from '../hooks/useTrainPositions';
+import { northernLineStations } from '../data/stations';
 
-// Define the SVG-based train block component with smaller size
-const TrainBlock = ({ x, y, train, onClick, isSelected, scale }) => {
-  const directionArrow = train.direction === 'inbound' ? '↓' : '↑';
-  const minutesToArrival = Math.round(train.timeToStation / 60);
+// Interface for zoom and pan state
+interface ViewportState {
+  scale: number;
+  position: { x: number; y: number };
+}
 
-  // Smaller block size (was 6x6, now 4x4)
-  const blockWidth = 4;
-  const blockHeight = 4;
-
-  // Adjust font size based on zoom level - smaller base sizes
-  const fontSize = Math.max(1.2 / scale, 0.6);
-  const symbolSize = Math.max(1.4 / scale, 0.7);
-  const strokeWidth = 0.2 / scale;
-
-  return (
-    <g
-      transform={`translate(${x - blockWidth / 2}, ${y - blockHeight / 2})`}
-      onClick={onClick}
-      style={{ cursor: 'pointer' }}
-      className={`transition-transform duration-300 ${
-        isSelected ? 'scale-110' : ''
-      }`}
-    >
-      {/* Background */}
-      <rect
-        width={blockWidth}
-        height={blockHeight}
-        fill="black"
-        rx="0.7"
-        ry="0.7"
-      />
-
-      {/* Train ID */}
-      <text
-        x={blockWidth / 2}
-        y={blockHeight / 3}
-        fill="white"
-        fontSize={fontSize}
-        textAnchor="middle"
-        dominantBaseline="middle"
-      >
-        {train.vehicleId}
-      </text>
-
-      {/* Minutes */}
-      <text
-        x={blockWidth / 2}
-        y={(blockHeight * 2) / 3 + 0.2}
-        fill="white"
-        fontSize={fontSize}
-        textAnchor="middle"
-        dominantBaseline="middle"
-      >
-        {minutesToArrival}m
-      </text>
-
-      {/* Direction indicator (small triangle) */}
-      <polygon
-        points={
-          train.direction === 'inbound'
-            ? `${blockWidth - 0.8},${blockHeight - 0.8} ${blockWidth - 0.2},${
-                blockHeight - 0.8
-              } ${blockWidth - 0.5},${blockHeight - 0.2}`
-            : `${blockWidth - 0.8},${blockHeight - 0.2} ${blockWidth - 0.2},${
-                blockHeight - 0.2
-              } ${blockWidth - 0.5},${blockHeight - 0.8}`
-        }
-        fill="white"
-      />
-
-      {/* Selection indicator */}
-      {isSelected && (
-        <rect
-          x="-0.2"
-          y="-0.2"
-          width={blockWidth + 0.4}
-          height={blockHeight + 0.4}
-          stroke="#3b82f6"
-          strokeWidth={strokeWidth}
-          fill="none"
-          rx="0.9"
-          ry="0.9"
-        />
-      )}
-    </g>
-  );
-};
-
-// Helper function to find station by location string with improved matching
-const findStationByLocation = (locationStr, stations) => {
-  // Try to match by exact station name first
-  for (const station of stations) {
-    if (locationStr.includes(station.name)) {
-      return station;
-    }
-  }
-
-  // Handle "Between X and Y" cases
-  if (locationStr.includes('Between')) {
-    const parts = locationStr.replace('Between ', '').split(' and ');
-
-    // Try to find both stations
-    let station1 = null;
-    let station2 = null;
-
-    for (const station of stations) {
-      if (parts[0].includes(station.name) || station.name.includes(parts[0])) {
-        station1 = station;
-      }
-      if (parts[1].includes(station.name) || station.name.includes(parts[1])) {
-        station2 = station;
-      }
-    }
-
-    if (station1 && station2) {
-      // Create a midpoint between the two stations
-      return {
-        id: 'between',
-        name: locationStr,
-        x: (station1.x + station2.x) / 2,
-        y: (station1.y + station2.y) / 2,
-      };
-    }
-  }
-
-  return null;
-};
-
-// Calculate train positions and handle animation smoothly
-const useTrainPositions = (trains, stations) => {
-  const [positions, setPositions] = useState([]);
-  const prevPositionsRef = useRef([]);
-
-  useEffect(() => {
-    if (!trains) return;
-
-    const calculatePositions = () => {
-      const newPositions = trains
-        .map((train) => {
-          // Find station based on current location
-          let currentStation = findStationByLocation(
-            train.currentLocation,
-            stations
-          );
-
-          if (!currentStation && train.stationName) {
-            // Try using stationName if provided
-            currentStation = stations.find(
-              (s) =>
-                s.name.includes(
-                  train.stationName.replace(' Underground Station', '')
-                ) || train.stationName.includes(s.name)
-            );
-          }
-
-          if (!currentStation) {
-            // If still not found, try to place near destination
-            const destinationName = train.destinationName.replace(
-              ' Underground Station',
-              ''
-            );
-            const destinationStation = stations.find(
-              (s) =>
-                s.name.includes(destinationName) ||
-                destinationName.includes(s.name)
-            );
-
-            if (destinationStation) {
-              return {
-                id: train.id,
-                vehicleId: train.vehicleId,
-                x: destinationStation.x,
-                y: destinationStation.y - 2,
-                destinationName: train.destinationName,
-                direction: train.direction,
-                timeToStation: train.timeToStation,
-                currentLocation: train.currentLocation,
-              };
-            }
-            return null;
-          }
-
-          return {
-            id: train.id,
-            vehicleId: train.vehicleId,
-            x: currentStation.x,
-            y: currentStation.y,
-            destinationName: train.destinationName,
-            direction: train.direction,
-            timeToStation: train.timeToStation,
-            currentLocation: train.currentLocation,
-          };
-        })
-        .filter((pos) => pos !== null);
-
-      // Interpolate positions for smooth animation if we have previous positions
-      if (prevPositionsRef.current.length > 0) {
-        const interpolated = newPositions.map((newPos) => {
-          const prevPos = prevPositionsRef.current.find(
-            (p) => p.id === newPos.id
-          );
-          if (prevPos) {
-            // Apply a smooth transition
-            return {
-              ...newPos,
-              x: newPos.x * 0.1 + prevPos.x * 0.9, // Gradual movement
-              y: newPos.y * 0.1 + prevPos.y * 0.9,
-            };
-          }
-          return newPos;
-        });
-
-        setPositions(interpolated);
-      } else {
-        setPositions(newPositions);
-      }
-
-      prevPositionsRef.current = newPositions;
-    };
-
-    calculatePositions();
-
-    // Set up animation frame for smooth updates
-    const animationInterval = setInterval(calculatePositions, 1000); // Update every second
-
-    return () => clearInterval(animationInterval);
-  }, [trains, stations]);
-
-  return positions;
-};
-
-const ZoomableTubeMap = ({ stations }) => {
-  const [selectedTrain, setSelectedTrain] = useState(null);
-  const svgRef = useRef(null);
+/**
+ * TubeMap component displays the Northern line map with train positions
+ */
+const TubeMap: React.FC = () => {
+  const [selectedTrain, setSelectedTrain] = useState<TrainPosition | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
 
   // State for zoom and pan
-  const [scale, setScale] = useState(1);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [viewport, setViewport] = useState<ViewportState>({
+    scale: 1,
+    position: { x: 0, y: 0 }
+  });
   const [dragging, setDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
+  // Fetch train positions with SWR
   const { data: trains, error } = useSWR(
     'trainPositions',
     fetchTrainPositions,
@@ -252,24 +36,32 @@ const ZoomableTubeMap = ({ stations }) => {
   );
 
   // Use our custom hook for smooth train animations
-  const trainPositions = useTrainPositions(trains, stations);
+  const trainPositions = useTrainPositions(trains, northernLineStations);
 
   // Zoom functions
   const handleZoomIn = () => {
-    setScale((prevScale) => Math.min(prevScale * 1.5, 10));
+    setViewport(prev => ({
+      ...prev,
+      scale: Math.min(prev.scale * 1.5, 10)
+    }));
   };
 
   const handleZoomOut = () => {
-    setScale((prevScale) => Math.max(prevScale / 1.5, 0.5));
+    setViewport(prev => ({
+      ...prev,
+      scale: Math.max(prev.scale / 1.5, 0.5)
+    }));
   };
 
   const handleReset = () => {
-    setScale(1);
-    setPosition({ x: 0, y: 0 });
+    setViewport({
+      scale: 1,
+      position: { x: 0, y: 0 }
+    });
   };
 
   // Handle mouse wheel zoom
-  const handleWheel = (e) => {
+  const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
 
     // Get mouse position relative to SVG
@@ -280,49 +72,54 @@ const ZoomableTubeMap = ({ stations }) => {
     const mouseY = e.clientY - svgRect.top;
 
     // Calculate point in SVG coordinates before zoom
-    const pointXBeforeZoom = mouseX / scale - position.x;
-    const pointYBeforeZoom = mouseY / scale - position.y;
+    const pointXBeforeZoom = mouseX / viewport.scale - viewport.position.x;
+    const pointYBeforeZoom = mouseY / viewport.scale - viewport.position.y;
 
     // Adjust scale based on wheel direction (smaller increments for smoother zoom)
     const zoomFactor = 1.05; // Reduced from 1.1 for finer control
     const newScale =
       e.deltaY < 0
-        ? Math.min(scale * zoomFactor, 10) // Zoom in
-        : Math.max(scale / zoomFactor, 0.5); // Zoom out
+        ? Math.min(viewport.scale * zoomFactor, 10) // Zoom in
+        : Math.max(viewport.scale / zoomFactor, 0.5); // Zoom out
 
     // Calculate how the point would move after the zoom
-    const pointXAfterZoom = mouseX / newScale - position.x;
-    const pointYAfterZoom = mouseY / newScale - position.y;
+    const pointXAfterZoom = mouseX / newScale - viewport.position.x;
+    const pointYAfterZoom = mouseY / newScale - viewport.position.y;
 
     // Adjust position to keep the point under the mouse stable
     const newPosition = {
-      x: position.x + (pointXAfterZoom - pointXBeforeZoom),
-      y: position.y + (pointYAfterZoom - pointYBeforeZoom),
+      x: viewport.position.x + (pointXAfterZoom - pointXBeforeZoom),
+      y: viewport.position.y + (pointYAfterZoom - pointYBeforeZoom),
     };
 
-    setScale(newScale);
-    setPosition(newPosition);
+    setViewport({
+      scale: newScale,
+      position: newPosition
+    });
   };
 
   // Pan handling with improved smoothness
-  const handleMouseDown = (e) => {
+  const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return; // Only left mouse button
     e.preventDefault();
     setDragging(true);
     setDragStart({
-      x: e.clientX / scale - position.x,
-      y: e.clientY / scale - position.y,
+      x: e.clientX / viewport.scale - viewport.position.x,
+      y: e.clientY / viewport.scale - viewport.position.y,
     });
   };
 
-  const handleMouseMove = (e) => {
+  const handleMouseMove = (e: React.MouseEvent) => {
     if (!dragging) return;
     e.preventDefault();
     const newPosition = {
-      x: e.clientX / scale - dragStart.x,
-      y: e.clientY / scale - dragStart.y,
+      x: e.clientX / viewport.scale - dragStart.x,
+      y: e.clientY / viewport.scale - dragStart.y,
     };
-    setPosition(newPosition);
+    setViewport(prev => ({
+      ...prev,
+      position: newPosition
+    }));
   };
 
   const handleMouseUp = () => {
@@ -342,23 +139,26 @@ const ZoomableTubeMap = ({ stations }) => {
   }, []);
 
   // Handle touch events for mobile
-  const handleTouchStart = (e) => {
+  const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length !== 1) return;
     e.preventDefault();
     setDragging(true);
     setDragStart({
-      x: e.touches[0].clientX / scale - position.x,
-      y: e.touches[0].clientY / scale - position.y,
+      x: e.touches[0].clientX / viewport.scale - viewport.position.x,
+      y: e.touches[0].clientY / viewport.scale - viewport.position.y,
     });
   };
 
-  const handleTouchMove = (e) => {
+  const handleTouchMove = (e: React.TouchEvent) => {
     if (!dragging || e.touches.length !== 1) return;
     e.preventDefault(); // Prevent scrolling
-    setPosition({
-      x: e.touches[0].clientX / scale - dragStart.x,
-      y: e.touches[0].clientY / scale - dragStart.y,
-    });
+    setViewport(prev => ({
+      ...prev,
+      position: {
+        x: e.touches[0].clientX / prev.scale - dragStart.x,
+        y: e.touches[0].clientY / prev.scale - dragStart.y,
+      }
+    }));
   };
 
   const handleTouchEnd = () => {
@@ -366,9 +166,9 @@ const ZoomableTubeMap = ({ stations }) => {
   };
 
   // Adjust station label size based on zoom
-  const stationLabelSize = Math.max(2 / scale, 1);
-  const stationCircleSize = Math.max(1 / scale, 0.5);
-  const lineWidth = Math.max(1 / scale, 0.5);
+  const stationLabelSize = Math.max(2 / viewport.scale, 1);
+  const stationCircleSize = Math.max(1 / viewport.scale, 0.5);
+  const lineWidth = Math.max(1 / viewport.scale, 0.5);
 
   if (error) {
     return (
@@ -422,7 +222,7 @@ const ZoomableTubeMap = ({ stations }) => {
       >
         {/* Transform group for zoom and pan */}
         <g
-          transform={`translate(${position.x}, ${position.y}) scale(${scale})`}
+          transform={`translate(${viewport.position.x}, ${viewport.position.y}) scale(${viewport.scale})`}
         >
           {/* Northern Line Paths */}
           {/* High Barnet to Camden */}
@@ -476,7 +276,7 @@ const ZoomableTubeMap = ({ stations }) => {
           />
 
           {/* Stations */}
-          {stations.map((station) => (
+          {northernLineStations.map((station) => (
             <g key={station.id}>
               <circle
                 cx={station.x}
@@ -506,7 +306,7 @@ const ZoomableTubeMap = ({ stations }) => {
               train={train}
               onClick={() => setSelectedTrain(train)}
               isSelected={selectedTrain?.id === train.id}
-              scale={scale}
+              scale={viewport.scale}
             />
           ))}
         </g>
@@ -559,4 +359,4 @@ const ZoomableTubeMap = ({ stations }) => {
   );
 };
 
-export default ZoomableTubeMap;
+export default TubeMap;

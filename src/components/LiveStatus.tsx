@@ -1,41 +1,24 @@
-// LiveStatus.tsx
 import React, { useState } from 'react';
 import { Train } from 'lucide-react';
 import useSWR from 'swr';
 import { fetchLineStatus, fetchTrainPositions } from '../lib/api';
 import { LineStatus, VehiclePosition } from '../types/tfl';
-import TrainBlock from './TrainBlock';
 
-// Define positions for key stations on the Northern line
-// These would be coordinates matching your map's layout
-const stationPositions: Record<string, { x: number; y: number }> = {
-  '940GZZLUKNG': { x: 150, y: 300 }, // Kennington
-  '940GZZLUMDN': { x: 150, y: 400 }, // Morden
-  '940GZZLUMGT': { x: 200, y: 150 }, // Moorgate
-  '940GZZLUBKR': { x: 180, y: 180 }, // Bank
-  // Add more stations as needed
-};
-
-// Define positions for sections of track
-const trackSections: Record<string, { x: number; y: number }> = {
-  'Between Moorgate and Bank': { x: 190, y: 165 },
-  'Between Bank and London Bridge': { x: 200, y: 210 },
-  'At Kennington Underground Station': { x: 150, y: 300 },
-  'At platform': { x: 150, y: 290 },
-  // Add more track sections as needed
-};
-
+/**
+ * LiveStatus component shows real-time information about Northern Line status
+ * and upcoming trains in a sidebar
+ */
 const LiveStatus: React.FC = () => {
-  const [selectedTrain, setSelectedTrain] = useState<VehiclePosition | null>(
-    null
-  );
+  const [selectedTrain, setSelectedTrain] = useState<VehiclePosition | null>(null);
 
+  // Fetch line status with SWR
   const { data: status, error: statusError } = useSWR<LineStatus[]>(
     'lineStatus',
     fetchLineStatus,
     { refreshInterval: 60000 } // Refresh every minute
   );
 
+  // Fetch train positions with SWR
   const { data: trains } = useSWR<VehiclePosition[]>(
     'trainPositions',
     fetchTrainPositions,
@@ -50,27 +33,10 @@ const LiveStatus: React.FC = () => {
     );
   }
 
+  // Get current line status
   const lineStatus =
     status?.[0]?.lineStatuses?.[0]?.statusSeverityDescription || 'Loading...';
   const activeTrains = trains?.length || 0;
-
-  // Function to determine train position based on current location or station
-  const getTrainPosition = (train: VehiclePosition) => {
-    // Check if train is at a known station
-    if (train.naptanId && stationPositions[train.naptanId]) {
-      return stationPositions[train.naptanId];
-    }
-
-    // Check if train is on a known track section
-    for (const [section, position] of Object.entries(trackSections)) {
-      if (train.currentLocation.includes(section)) {
-        return position;
-      }
-    }
-
-    // Fallback position if location is unknown
-    return { x: 100, y: 100 };
-  };
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-4">
@@ -126,14 +92,24 @@ const LiveStatus: React.FC = () => {
       <div className="mb-4">
         <h3 className="font-medium mb-2">Next Trains</h3>
         <div className="space-y-2">
-          {trains?.slice(0, 3).map((train) => (
-            <div key={train.id} className="p-2 bg-gray-50 rounded text-sm">
+          {!trains && <div className="text-gray-500">Loading trains...</div>}
+          
+          {trains?.length === 0 && (
+            <div className="text-gray-500">No trains currently available</div>
+          )}
+          
+          {trains?.slice(0, 5).map((train) => (
+            <button
+              key={train.id}
+              className="w-full p-2 bg-gray-50 hover:bg-gray-100 rounded text-sm text-left transition-colors"
+              onClick={() => setSelectedTrain(train)}
+            >
               <div className="font-medium">{train.destinationName}</div>
-              <div className="text-gray-600">
+              <div className="text-gray-600 text-xs">
                 {train.currentLocation} • {Math.round(train.timeToStation / 60)}{' '}
                 mins
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </div>
