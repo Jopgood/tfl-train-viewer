@@ -1,21 +1,34 @@
-import React, { useMemo, useState, useRef, useEffect } from 'react';
-import useSWR from 'swr';
-import { Train, ZoomIn, ZoomOut, Maximize } from 'lucide-react';
-import { fetchTrainPositions } from '../lib/api';
-import { Station, VehiclePosition, TrainPosition } from '../types/tfl';
+import React from 'react';
+import { TrainPosition } from '../types/tfl';
 
-// Define the SVG-based train block component with smaller size
-const TrainBlock = ({ x, y, train, onClick, isSelected, scale }) => {
-  const directionArrow = train.direction === 'inbound' ? '↓' : '↑';
+interface TrainBlockProps {
+  x: number;
+  y: number;
+  train: TrainPosition;
+  onClick: () => void;
+  isSelected: boolean;
+  scale: number;
+}
+
+/**
+ * SVG-based train block component showing a train's position on the map
+ */
+const TrainBlock: React.FC<TrainBlockProps> = ({ 
+  x, 
+  y, 
+  train, 
+  onClick, 
+  isSelected, 
+  scale 
+}) => {
   const minutesToArrival = Math.round(train.timeToStation / 60);
 
-  // Smaller block size (was 6x6, now 4x4)
+  // Smaller block size for better visual
   const blockWidth = 4;
   const blockHeight = 4;
 
-  // Adjust font size based on zoom level - smaller base sizes
+  // Adjust font size based on zoom level
   const fontSize = Math.max(1.2 / scale, 0.6);
-  const symbolSize = Math.max(1.4 / scale, 0.7);
   const strokeWidth = 0.2 / scale;
 
   return (
@@ -27,7 +40,7 @@ const TrainBlock = ({ x, y, train, onClick, isSelected, scale }) => {
         isSelected ? 'scale-110' : ''
       }`}
     >
-      {/* Background */}
+      {/* Train block background */}
       <rect
         width={blockWidth}
         height={blockHeight}
@@ -45,7 +58,7 @@ const TrainBlock = ({ x, y, train, onClick, isSelected, scale }) => {
         textAnchor="middle"
         dominantBaseline="middle"
       >
-        {train.vehicleId}
+        {train.vehicleId.slice(-3)}
       </text>
 
       {/* Minutes */}
@@ -92,145 +105,4 @@ const TrainBlock = ({ x, y, train, onClick, isSelected, scale }) => {
   );
 };
 
-// Helper function to find station by location string with improved matching
-const findStationByLocation = (locationStr, stations) => {
-  // Try to match by exact station name first
-  for (const station of stations) {
-    if (locationStr.includes(station.name)) {
-      return station;
-    }
-  }
-
-  // Handle "Between X and Y" cases
-  if (locationStr.includes('Between')) {
-    const parts = locationStr.replace('Between ', '').split(' and ');
-
-    // Try to find both stations
-    let station1 = null;
-    let station2 = null;
-
-    for (const station of stations) {
-      if (parts[0].includes(station.name) || station.name.includes(parts[0])) {
-        station1 = station;
-      }
-      if (parts[1].includes(station.name) || station.name.includes(parts[1])) {
-        station2 = station;
-      }
-    }
-
-    if (station1 && station2) {
-      // Create a midpoint between the two stations
-      return {
-        id: 'between',
-        name: locationStr,
-        x: (station1.x + station2.x) / 2,
-        y: (station1.y + station2.y) / 2,
-      };
-    }
-  }
-
-  return null;
-};
-
-// Calculate train positions and handle animation smoothly
-const useTrainPositions = (trains, stations) => {
-  const [positions, setPositions] = useState([]);
-  const prevPositionsRef = useRef([]);
-
-  useEffect(() => {
-    if (!trains) return;
-
-    const calculatePositions = () => {
-      const newPositions = trains
-        .map((train) => {
-          // Find station based on current location
-          let currentStation = findStationByLocation(
-            train.currentLocation,
-            stations
-          );
-
-          if (!currentStation && train.stationName) {
-            // Try using stationName if provided
-            currentStation = stations.find(
-              (s) =>
-                s.name.includes(
-                  train.stationName.replace(' Underground Station', '')
-                ) || train.stationName.includes(s.name)
-            );
-          }
-
-          if (!currentStation) {
-            // If still not found, try to place near destination
-            const destinationName = train.destinationName.replace(
-              ' Underground Station',
-              ''
-            );
-            const destinationStation = stations.find(
-              (s) =>
-                s.name.includes(destinationName) ||
-                destinationName.includes(s.name)
-            );
-
-            if (destinationStation) {
-              return {
-                id: train.id,
-                vehicleId: train.vehicleId,
-                x: destinationStation.x,
-                y: destinationStation.y - 2,
-                destinationName: train.destinationName,
-                direction: train.direction,
-                timeToStation: train.timeToStation,
-                currentLocation: train.currentLocation,
-              };
-            }
-            return null;
-          }
-
-          return {
-            id: train.id,
-            vehicleId: train.vehicleId,
-            x: currentStation.x,
-            y: currentStation.y,
-            destinationName: train.destinationName,
-            direction: train.direction,
-            timeToStation: train.timeToStation,
-            currentLocation: train.currentLocation,
-          };
-        })
-        .filter((pos) => pos !== null);
-
-      // Interpolate positions for smooth animation if we have previous positions
-      if (prevPositionsRef.current.length > 0) {
-        const interpolated = newPositions.map((newPos) => {
-          const prevPos = prevPositionsRef.current.find(
-            (p) => p.id === newPos.id
-          );
-          if (prevPos) {
-            // Apply a smooth transition
-            return {
-              ...newPos,
-              x: newPos.x * 0.1 + prevPos.x * 0.9, // Gradual movement
-              y: newPos.y * 0.1 + prevPos.y * 0.9,
-            };
-          }
-          return newPos;
-        });
-
-        setPositions(interpolated);
-      } else {
-        setPositions(newPositions);
-      }
-
-      prevPositionsRef.current = newPositions;
-    };
-
-    calculatePositions();
-
-    // Set up animation frame for smooth updates
-    const animationInterval = setInterval(calculatePositions, 1000); // Update every second
-
-    return () => clearInterval(animationInterval);
-  }, [trains, stations]);
-
-  return positions;
-};
+export default TrainBlock;
