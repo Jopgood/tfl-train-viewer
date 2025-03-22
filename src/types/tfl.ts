@@ -71,3 +71,23 @@ export interface TrainPosition {
   timeToStation: number;
   currentLocation: string;
 }
+
+// Define type for station positions mapping
+export interface StationPositionMap {
+  [stationId: string]: { x: number; y: number };
+}
+
+// Define type for track section positions mapping
+export interface TrackSectionMap {
+  [sectionDescription: string]: { x: number; y: number };
+}
+
+// TrainBlock component props
+export interface TrainBlockProps {
+  x: number;
+  y: number;
+  train: TrainPosition;
+  onClick: () => void;
+  isSelected: boolean;
+  scale: number;
+}
