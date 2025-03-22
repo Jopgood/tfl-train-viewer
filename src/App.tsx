@@ -1,7 +1,11 @@
+import { Ungroup as Underground } from 'lucide-react';
 import TubeMap from './components/TubeMap';
 import LiveStatus from './components/LiveStatus';
-import { Ungroup as Underground } from 'lucide-react';
 
+/**
+ * Main application component that renders the header, tube map, 
+ * and live status components
+ */
 function App() {
   return (
     <div className="min-h-screen bg-gray-100">
