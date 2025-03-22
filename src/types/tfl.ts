@@ -1,4 +1,6 @@
-// types/tfl.ts
+/**
+ * Timing information for a prediction
+ */
 export interface PredictionTiming {
   $type: string;
   countdownServerAdjustment: string;
@@ -9,6 +11,9 @@ export interface PredictionTiming {
   received?: string;
 }
 
+/**
+ * Vehicle position data from TFL API
+ */
 export interface VehiclePosition {
   $type: string;
   id: string;
@@ -16,7 +21,7 @@ export interface VehiclePosition {
   currentLocation: string;
   destinationName: string;
   destinationNaptanId: string;
-  direction: string;
+  direction: string; // 'inbound' or 'outbound'
   expectedArrival: string;
   lineId: string;
   lineName: string;
@@ -26,13 +31,16 @@ export interface VehiclePosition {
   platformName: string;
   stationName: string;
   timeToLive: string;
-  timeToStation: number;
+  timeToStation: number; // in seconds
   timestamp: string;
   timing: PredictionTiming;
   towards: string;
   vehicleId: string;
 }
 
+/**
+ * Status details for a line
+ */
 export interface LineStatusDetail {
   $type: string;
   statusSeverity: number;
@@ -46,6 +54,9 @@ export interface LineStatusDetail {
   };
 }
 
+/**
+ * Line status information
+ */
 export interface LineStatus {
   $type: string;
   id: string;
@@ -54,13 +65,19 @@ export interface LineStatus {
   lineStatuses: LineStatusDetail[];
 }
 
+/**
+ * Station information with map coordinates
+ */
 export interface Station {
   id: string;
   name: string;
-  x: number;
-  y: number;
+  x: number; // x-coordinate on the map
+  y: number; // y-coordinate on the map
 }
 
+/**
+ * Train position with coordinates for display on map
+ */
 export interface TrainPosition {
   id: string;
   vehicleId: string;
